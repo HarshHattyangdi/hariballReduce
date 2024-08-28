@@ -63,14 +63,24 @@ def get_size(degree, max_degree, min_size=5, max_size=20):
     return min_size + (degree / max_degree) * (max_size - min_size)
 
 def calculate_spokes(G):
-    """Calculate the number of spokes for each node."""
+    """Calculate the number of spokes and spoke node IDs for each node."""
     degree_dict = dict(G.degree())
     spokes_dict = {}
+    spoke_count_dict = {}
+    spoke_source_dict = {}
     for node in G.nodes():
-        # Count the number of neighboring nodes with degree 1
-        spokes = sum(1 for neighbor in G.neighbors(node) if degree_dict[neighbor] == 1)
+        spokes = [neighbor for neighbor in G.neighbors(node) if degree_dict[neighbor] == 1]
         spokes_dict[node] = spokes
-    return spokes_dict
+        spoke_count_dict[node] = len(spokes)
+        for spoke in spokes:
+            spoke_source_dict[spoke] = node
+    return spoke_count_dict, spokes_dict, spoke_source_dict
+
+def identify_hubs(G):
+    """Identify hubs in the graph."""
+    degree_dict = dict(G.degree())
+    hubs = [node for node, degree in degree_dict.items() if degree > 1]
+    return hubs
 
 def filter_edges(G, strategy='betweenness', threshold=0.1):
     """Filter edges based on the selected strategy and remove isolated nodes."""
@@ -144,8 +154,9 @@ def process_graph():
     degree_dict = dict(G.degree())
     max_degree = max(degree_dict.values(), default=1)
 
-    # Calculate spokes
-    spokes_dict = calculate_spokes(G)
+    # Calculate spokes and identify hubs
+    spoke_count_dict, spokes_dict, spoke_source_dict = calculate_spokes(G)
+    hubs = identify_hubs(G)
 
     response_data = {
         'nodes': [
@@ -158,7 +169,10 @@ def process_graph():
                 'color': get_color_by_percentile(scaled_centrality[node], thresholds),
                 'size': get_size(degree_dict[node], max_degree),
                 'degree': degree_dict[node],  # Number of connections
-                'spokes': spokes_dict[node]  # Number of spokes
+                'spoke_count': spoke_count_dict[node],  # Number of spokes
+                'spokes': spokes_dict[node],  # List of spoke node IDs
+                'isSpoke': node in spoke_source_dict,  # New flag
+                'sourceId': spoke_source_dict.get(node)  # Source node ID
             } for node in G.nodes()
         ],
         'edges': [
@@ -169,7 +183,7 @@ def process_graph():
                 'target_pos': pos_3d_dict[edge[1]]
             } for edge in G.edges()
         ],
-        'hubs': []
+        'hubs': hubs  # Include hubs in the response
     }
 
     return jsonify(response_data)
@@ -211,8 +225,9 @@ def filter_edges_route():
             degree_dict = dict(G.degree())
             max_degree = max(degree_dict.values(), default=1)
 
-            # Calculate spokes
-            spokes_dict = calculate_spokes(G)
+            # Calculate spokes and identify hubs
+            spoke_count_dict, spokes_dict, spoke_source_dict = calculate_spokes(G)
+            hubs = identify_hubs(G)
 
             response_data = {
                 'nodes': [
@@ -225,7 +240,10 @@ def filter_edges_route():
                         'color': get_color_by_percentile(scaled_centrality[node], thresholds),
                         'size': get_size(degree_dict[node], max_degree),
                         'degree': degree_dict[node],  # Number of connections
-                        'spokes': spokes_dict[node]  # Number of spokes
+                        'spoke_count': spoke_count_dict[node],  # Number of spokes
+                        'spokes': spokes_dict[node],  # List of spoke node IDs
+                        'isSpoke': node in spoke_source_dict,  # New flag
+                        'sourceId': spoke_source_dict.get(node)  # Source node ID
                     } for node in G.nodes()
                 ],
                 'edges': [
@@ -236,7 +254,7 @@ def filter_edges_route():
                         'target_pos': pos_3d_dict[edge[1]]
                     } for edge in G.edges()
                 ],
-                'hubs': []
+                'hubs': hubs  # Include hubs in the response
             }
 
             return jsonify(response_data)
